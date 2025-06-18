@@ -14,6 +14,9 @@ exports.handler = async function (context, event, callback) {
   const assistantSid = await getAssistantSid(context, event);
 
   const { ConversationSid, ChatServiceSid, Author } = event;
+
+  console.log(event);
+
   const AssistantIdentity =
     typeof event.AssistantIdentity === "string"
       ? event.AssistantIdentity
@@ -45,6 +48,36 @@ exports.handler = async function (context, event, callback) {
     return callback(null, "");
   }
 
+  let messageBody = event.Body;
+
+  if (event.InteractiveData) {
+    try {
+      console.log('Raw InteractiveData:', event.InteractiveData);
+
+      // First parse: turns outer string into inner string
+      const intermediate = JSON.parse(event.InteractiveData);
+      // Second parse: turns inner string into actual object
+      const parsed = typeof intermediate === 'string'
+        ? JSON.parse(intermediate)
+        : intermediate;
+
+      if (parsed && typeof parsed === 'object' && parsed.verify) {
+        const fields = parsed.verify;
+
+        if (typeof fields === 'object') {
+          const lines = Object.entries(fields).map(
+            ([key, value]) => `${key}: ${value}`
+          );
+          messageBody = lines.join('\n');
+          console.log('Parsed InteractiveData to messageBody:\n', messageBody);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to parse InteractiveData:', err.message);
+      messageBody = `Erro ao interpretar os dados interativos.\nRaw: ${event.InteractiveData}`;
+    }
+  }
+
   const token = await signRequest(context, event);
   const params = new URLSearchParams();
   params.append("_token", token);
@@ -52,7 +85,7 @@ exports.handler = async function (context, event, callback) {
     params.append("_assistantIdentity", AssistantIdentity);
   }
   const body = {
-    body: event.Body,
+    body: messageBody,
     identity: identity,
     session_id: `conversations__${ChatServiceSid}/${ConversationSid}`,
     // using a callback to handle AI Assistant responding
